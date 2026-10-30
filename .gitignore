@@ -1,0 +1,10 @@
+node_modules/
+.next/
+*.tsbuildinfo
+.env*
+!.env.example
+.DS_Store
+tmp/
+output/
+public/vendor/opencv.js
+public/scanner.worker.js
