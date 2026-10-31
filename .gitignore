@@ -3,6 +3,8 @@ node_modules/
 *.tsbuildinfo
 .env*
 !.env.example
+*service-account*.json
+*credentials*.json
 .DS_Store
 tmp/
 output/

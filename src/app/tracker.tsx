@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import MonthStatistics from "./month-statistics";
 import Toast from "./toast";
+import type { MonthStorage } from "@/lib/month-storage";
+import type { BackupMonth } from "@/lib/backup";
 import {
   collectBackup,
   parseBackup,
@@ -86,9 +88,18 @@ function download(data: Blob, name: string) {
 }
 export default function Tracker({
   showDiagnostics = false,
+  storage,
+  persist,
+  user,
 }: {
   showDiagnostics?: boolean;
+  storage?: MonthStorage;
+  persist?: (records: BackupMonth[]) => Promise<void>;
+  user?: { name: string; email: string; sub: string };
 }) {
+  const [saving, setSaving] = useState(false);
+  const writing = useRef(false);
+  const dataStorage = () => storage ?? window.localStorage;
   const [month, setMonth] = useState(INITIAL_MONTH),
     [grid, setGrid] = useState<Grid>(() => emptyGrid(INITIAL_MONTH));
   const [saved, setSaved] = useState<Grid>(() => emptyGrid(INITIAL_MONTH)),
@@ -152,7 +163,7 @@ export default function Tracker({
     let next = emptyGrid(month);
     let nextHabits: Habit[] = HABITS.map((h) => ({ ...h }));
     try {
-      const raw = localStorage.getItem(storageKey(month));
+      const raw = dataStorage().getItem(storageKey(month));
       if (raw) {
         const value = JSON.parse(raw);
         if (value && typeof value === "object")
@@ -183,7 +194,7 @@ export default function Tracker({
     setManual(false);
     setCorners([]);
     setReady(true);
-  }, [month]);
+  }, [month, storage]);
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
       if (dirty) {
@@ -353,6 +364,7 @@ export default function Tracker({
     }
     if (
       scanBusy ||
+      saving ||
       (dirty &&
         !window.confirm(
           "Есть несохранённые изменения. Перейти к другому месяцу и отменить их?",
@@ -423,7 +435,8 @@ export default function Tracker({
     [next[row], next[row + direction]] = [next[row + direction], next[row]];
     updateHabitOrder(next);
   }
-  function save() {
+  async function save() {
+    if (writing.current) return;
     const invalidName = habits.find((habit) => !habit.name.trim());
     if (invalidName) {
       setError("");
@@ -446,6 +459,8 @@ export default function Tracker({
       short: h.short.trim() || h.name.trim(),
     }));
     try {
+      writing.current = true;
+      setSaving(true);
       const timestamp = new Date().toISOString();
       const payload: SavedMonth = {
         version: 1,
@@ -454,17 +469,24 @@ export default function Tracker({
         habits: normalized,
         savedAt: timestamp,
       };
-      localStorage.setItem(storageKey(month), JSON.stringify(payload));
+      if (persist) await persist([parseMonth(payload)]);
+      dataStorage().setItem(storageKey(month), JSON.stringify(payload));
+      setHistoryRevision((revision) => revision + 1);
       setSaved(clone(grid));
       setHabits(normalized);
       setSavedHabits(normalized.map((h) => ({ ...h })));
       setMode("view");
       setPending(new Set());
       setError("");
-    } catch {
+    } catch (error) {
       setError(
-        "Сохранение недоступно или хранилище заполнено. Изменения остались в черновике — скачайте JSON.",
+        persist && error instanceof Error
+          ? `${error.message} Изменения остались в черновике — можно скачать JSON.`
+          : "Сохранение недоступно или хранилище заполнено. Изменения остались в черновике — скачайте JSON.",
       );
+    } finally {
+      writing.current = false;
+      setSaving(false);
     }
   }
   async function makePDF() {
@@ -612,7 +634,7 @@ export default function Tracker({
     setBackupMessage("");
     try {
       const current = parseMonth({ version: 1, month, habits, grid });
-      const payload = all ? collectBackup(localStorage, current) : current;
+      const payload = all ? collectBackup(dataStorage(), current) : current;
       download(
         new Blob([JSON.stringify(payload, null, 2)], {
           type: "application/json",
@@ -627,7 +649,9 @@ export default function Tracker({
     }
   }
   async function importJSON(file?: File, asTruth = false) {
-    if (!file) return;
+    if (!file || writing.current) return;
+    writing.current = true;
+    setSaving(true);
     setBackupMessage("");
     try {
       if (file.size > 20_000_000)
@@ -648,7 +672,7 @@ export default function Tracker({
         return;
       }
       const overlaps = records.filter(
-        (r) => localStorage.getItem(storageKey(r.month)) !== null,
+        (r) => dataStorage().getItem(storageKey(r.month)) !== null,
       );
       const current = records.find((r) => r.month === month);
       if (
@@ -658,7 +682,8 @@ export default function Tracker({
         )
       )
         return;
-      restoreBackup(localStorage, records);
+      if (persist) await persist(records);
+      restoreBackup(dataStorage(), records);
       setHistoryRevision((revision) => revision + 1);
       if (current) {
         setHabits(current.habits.map((h) => ({ ...h })));
@@ -680,6 +705,9 @@ export default function Tracker({
       setBackupMessage(`Импортировано и сохранено месяцев: ${records.length}.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось прочитать файл.");
+    } finally {
+      writing.current = false;
+      setSaving(false);
     }
   }
   const accuracy =
@@ -700,7 +728,12 @@ export default function Tracker({
       : null;
 
   return (
-    <div className="app-shell">
+    <fieldset className="app-shell" aria-busy={saving} disabled={saving}>
+      {saving && (
+        <div className="cloud-saving" role="status">
+          Сохраняем{persist ? " в Google Sheets" : ""}…
+        </div>
+      )}
       <aside className="sidebar">
         <a
           className="brand"
@@ -791,14 +824,32 @@ export default function Tracker({
             <UserRound size={18} />
           </span>
           <div className="account-info">
-            <strong>Пользователь</strong>
-            <span>Локальный профиль</span>
+            <strong>{user?.name ?? "Пользователь"}</strong>
+            <span title={user?.email}>
+              {user?.email ?? "Локальный профиль"}
+            </span>
           </div>
           <button
             className="logout-button"
             type="button"
             aria-label="Выйти"
-            title="Выход будет доступен после подключения авторизации"
+            disabled={!user || saving}
+            title={user ? "Выйти из трекера" : "Локальный профиль"}
+            onClick={() => {
+              if (
+                dirty &&
+                !window.confirm("Выйти и отменить несохранённые изменения?")
+              )
+                return;
+              const form = document.createElement("form");
+              form.method = "post";
+              form.action = "/api/auth/logout";
+              document.body.appendChild(form);
+              // Explicit confirmation above replaces the unsaved-navigation warning.
+              setSaved(clone(grid));
+              setSavedHabits(habits.map((h) => ({ ...h })));
+              setTimeout(() => form.submit(), 0);
+            }}
           >
             <LogOut size={18} />
           </button>
@@ -1170,6 +1221,7 @@ export default function Tracker({
             </div>
           </section>
           <MonthStatistics
+            storage={storage}
             month={month}
             grid={grid}
             historyRevision={historyRevision}
@@ -1546,6 +1598,6 @@ export default function Tracker({
           setMessage={setBackupMessage}
         />
       </div>
-    </div>
+    </fieldset>
   );
 }
