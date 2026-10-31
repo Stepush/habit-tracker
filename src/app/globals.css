@@ -2055,3 +2055,78 @@ html {
     min-width: 1300px;
   }
 }
+.app-shell {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.cloud-saving {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  padding: 12px 20px;
+  border-radius: 12px;
+  background: #344331;
+  color: white;
+  box-shadow: 0 4px 24px #0002;
+}
+.access-screen {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.access-card {
+  width: min(100%, 480px);
+  padding: 36px;
+  background: white;
+  border: 1px solid #e2e5da;
+  border-radius: 20px;
+  box-shadow: 0 12px 48px #2838210a;
+}
+.access-card h1 {
+  margin: 16px 0;
+}
+.access-card p {
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.access-card .primary {
+  display: inline-flex;
+  text-decoration: none;
+  margin: 12px 0;
+}
+.access-login {
+  width: min(100%, 360px);
+  padding: 48px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  text-align: center;
+}
+.access-login h1 {
+  margin: 0;
+}
+.google-sign-in {
+  min-height: 48px;
+  padding: 12px 24px;
+  border: 1px solid var(--olive);
+  border-radius: 10px;
+  background: var(--olive);
+  color: white;
+  font: inherit;
+  font-weight: 600;
+}
+.google-sign-in:hover {
+  background: #43543a;
+  border-color: #43543a;
+}
+.account-info span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

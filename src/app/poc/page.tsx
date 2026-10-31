@@ -1,4 +1,4 @@
-import Tracker from "../tracker";
+import AccessGate from "../access-gate";
 export default function Page() {
-  return <Tracker showDiagnostics />;
+  return <AccessGate showDiagnostics />;
 }

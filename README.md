@@ -1,6 +1,6 @@
 # Ритм / Ritm
 
-A local proof of concept for a printable habit tracker with browser-only recognition.
+A printable habit tracker with browser-only recognition, local storage for development, and optional private Google login / Google Sheets persistence.
 
 ## Run locally
 
@@ -12,6 +12,8 @@ npm run dev
 ```
 
 Open http://127.0.0.1:3000. Recognition diagnostics and ground-truth tools are available separately at `/poc`. No environment variables, account, API keys, or database are required. The development server binds to loopback only.
+
+For Google login and cloud persistence, follow [the setup guide](docs/google-setup.md) and copy `.env.example` to `.env.local`, or use `npm run setup:google` with locally downloaded credential files. The Google configuration replaces local persistence; existing browser data can be migrated by JSON export/import. Production requires a complete Google configuration and never falls back to unauthenticated local mode. `/poc` uses the same access gate.
 
 ```sh
 npm run typecheck
@@ -38,7 +40,7 @@ The sample PDF is written to `output/pdf/ritm-2026-10.pdf`. Output and temporary
 
 Photos are decoded into memory, resized to at most 2200 pixels on the long side and passed to a same-origin worker. There is no image upload endpoint, photo database, storage bucket, analytics SDK, or paid AI dependency. The worker loads OpenCV from this application. Original file inputs are cleared after selection. Image buffers/canvases are released when the photo is removed, the month changes or the page closes. No photos are persisted by the application.
 
-Only confirmed habit lists and grid data are stored, keyed by format version and month. This is browser-local storage, not an account or cloud backup. It can be lost on browser-data deletion; use JSON backups. Other browser profiles, devices and origins do not share these records. JSON export offers the selected month or all saved months, including the current draft. A single import accepts either format and legacy month backups, validates the entire file, and saves imported months immediately. Existing matching months require confirmation before replacement; other months remain untouched. If storage writes fail, import attempts to restore the previous records. Exports require valid habit names and data.
+Only confirmed habit lists and grid data are stored, keyed by format version and month. Without Google configuration in development, this is browser-local storage and can be lost on browser-data deletion; use JSON backups. Other browser profiles, devices and origins do not share local records. With Google configured, one private spreadsheet stores monthly snapshots in separate tabs; cloud records are held only in browser memory and do not overwrite old localStorage records. JSON export offers the selected month or all loaded months, including the current draft. Import accepts current and legacy backups, validates the file, and asks for confirmation before replacing matching months. Cloud import commits selected months atomically in one Sheets batch. Exports require valid habit names and data. Conflicts with already changed cloud records are rejected; strictly simultaneous saves still have a race because Sheets has no compare-and-swap. See the setup guide for limitations and recovery.
 
 ## Status and analytics rules
 
@@ -53,7 +55,7 @@ Color is decorative, not a status code. Thresholds and confidence scores are heu
 
 Passing synthetic tests proves the pipeline executes, not that real pencil photos are reliable. This increment is ready for physical print/photo experiments, not a completed recognition PoC or production MVP. See [the validation protocol](docs/recognition-validation.md).
 
-Current limitations: 1–10 habits per month; printing and scanning support the same range per A4 sheet, no authentication/database/sync, no HEIC decoder, no correction for bent paper, no clinical-grade or guaranteed accuracy. Very light pencil, shadows, thick crosses and glare may be misclassified. The user must review the result before saving.
+Current limitations: 1–10 habits per month; printing and scanning support the same range per A4 sheet, no HEIC decoder, no correction for bent paper, no clinical-grade or guaranteed accuracy. Google persistence is for one owner, requires network access and initial Google Cloud setup, and is not an offline sync engine. Very light pencil, shadows, thick crosses and glare may be misclassified. The user must review the result before saving.
 
 ## Code map
 
@@ -68,7 +70,7 @@ The OpenCV integration test runs the actual bundled worker against a generated s
 
 ## Next gate
 
-Validate real materials and photos before adding Supabase Auth, RLS, custom habits or public hosting. The eventual data model must preserve habit IDs, monthly snapshots and immutable printed template configurations. No database migrations are shipped in this increment.
+Validate real materials and photos. Before public hosting, complete the live Google login / Sheets checks in [the setup guide](docs/google-setup.md). The Sheets format preserves habit IDs and monthly snapshots. Automated tests exercise formatting, authentication boundaries and mocked API behavior; live Google credentials are still needed for end-to-end validation.
 
 ## Third-party assets
 

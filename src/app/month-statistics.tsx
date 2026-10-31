@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { MonthStorage } from "@/lib/month-storage";
 import {
   HABITS,
   monthLabel,
@@ -35,10 +36,12 @@ export default function MonthStatistics({
   month,
   grid,
   historyRevision,
+  storage,
 }: {
   month: string;
   grid: Grid;
   historyRevision: number;
+  storage?: MonthStorage;
 }) {
   const previousMonth = offsetMonth(month, -1);
   const [history, setHistory] = useState<Record<string, PreviousMonth>>({});
@@ -54,7 +57,7 @@ export default function MonthStatistics({
       for (const period of months) {
         if (period < "2000-01") continue;
         try {
-          const raw = localStorage.getItem(storageKey(period));
+          const raw = (storage ?? localStorage).getItem(storageKey(period));
           if (!raw) {
             records[period] = {
               month: period,
@@ -101,7 +104,7 @@ export default function MonthStatistics({
     }
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-  }, [month, historyRevision]);
+  }, [month, historyRevision, storage]);
 
   const stats = summarize(grid);
   const baseline = history[previousMonth];
