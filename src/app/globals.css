@@ -465,33 +465,6 @@ h1 {
   color: #9fa692;
   line-height: 1.6;
 }
-.painting-toolbar {
-  margin: -7px;
-  padding: 7px;
-  display: grid;
-  grid-template-columns:
-    calc(var(--habit-label-width) + var(--habit-column-gap))
-    max-content;
-  max-width: 100%;
-  overflow-x: auto;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 0;
-}
-.painting-toolbar > button {
-  justify-self: start;
-}
-.painting-toolbar button {
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-.painting-toolbar > span {
-  font-size: 12px;
-  color: #9a9f91;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
 .brushes {
   display: flex;
   gap: 5px;
@@ -536,9 +509,6 @@ h1 {
 }
 .grid-scroll.habits-scroll {
   overflow: visible;
-}
-#photo-review {
-  scroll-margin-top: 150px;
 }
 .habit-table {
   width: 100%;
@@ -681,10 +651,6 @@ h1 {
   background: var(--habit-color);
   border-color: var(--habit-color);
 }
-.cell.uncertain {
-  outline: 1.5px dashed #ca913f;
-  outline-offset: 1px;
-}
 .cell.unavailable {
   background: repeating-linear-gradient(
     135deg,
@@ -713,13 +679,6 @@ h1 {
   display: flex;
   align-items: center;
   gap: 6px;
-}
-.dashed-square {
-  width: 9px;
-  height: 9px;
-  border: 1px dashed #c69b58;
-  border-radius: 2px;
-  display: inline-block;
 }
 .save-bar {
   border-top: 1px solid #eceee4;
@@ -862,8 +821,7 @@ h1 {
   grid-template-columns: 1fr 1fr;
   gap: 20px;
 }
-.print-card,
-.scan-card {
+.print-card {
   padding: 22px 25px;
   position: relative;
   overflow: hidden;
@@ -936,29 +894,6 @@ h1 {
   flex: 1;
   border: 1px solid #e4e7da;
 }
-
-.paper-corner {
-  position: absolute;
-  width: 4px;
-  height: 4px;
-  background: #7b8371;
-}
-.tl {
-  top: 8px;
-  left: 7px;
-}
-.tr {
-  top: 8px;
-  right: 7px;
-}
-.bl {
-  bottom: 8px;
-  left: 7px;
-}
-.br {
-  bottom: 8px;
-  right: 7px;
-}
 .print-card-bottom {
   display: flex;
   flex-wrap: wrap;
@@ -984,123 +919,17 @@ h1 {
 .text-button:hover {
   color: #3b512c;
 }
-.upload-zone {
-  margin-top: 23px;
-  min-height: 139px;
-  width: 100%;
-  border: 1px dashed #d3dcc5;
-  border-radius: 7px;
-  background: #f8faf4;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 11px;
-  padding: 17px;
-}
-.upload-zone:hover {
-  background: #f0f4e8;
-  border-color: #9dac87;
-}
-.upload-icon {
-  width: 39px;
-  height: 39px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: #edf1e4;
-  color: #91a179;
-}
-.upload-zone b {
-  font-size: 12px;
-  font-weight: 400;
-  color: #7e8a6e;
-}
-.upload-zone > span:last-child {
-  font-size: 12px;
-  color: #adb59e;
-}
-.privacy-line {
-  font-size: 12px;
-  color: #a2ab92;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin-top: 17px;
-}
-.scanner-panel {
-  margin-top: 22px;
-  padding: 24px;
-}
-.scanner-panel .panel-heading h2 {
-  font-size: 23px;
-}
 .muted {
   font-size: 12px;
   line-height: 1.7;
   color: #939d85;
 }
-.scan-preview-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
-  gap: 16px;
-  margin-top: 18px;
-  align-items: start;
-}
-.image-label {
-  font-size: 12px;
-  color: #909b82;
-  margin: 0 0 10px;
-}
-.photo-canvas {
-  display: block;
-  width: 100%;
-  height: auto;
-  border: 1px solid #e3e7da;
-  border-radius: 5px;
-  background: #efefe8;
-}
-.photo-canvas.picking {
-  cursor: crosshair;
-}
-.scan-controls,
 .lab-actions {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 18px;
-}
-.manual-note {
-  font-size: 12px;
-  line-height: 1.8;
-  background: #f5f0e4;
-  border-radius: 5px;
-  padding: 12px;
-  color: #a18a59;
-}
-.scan-result {
-  margin-top: 20px;
-  border-top: 1px solid var(--line);
-  padding-top: 17px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 15px;
-}
-.scan-result b {
-  font-size: 13px;
-  font-weight: 500;
-}
-.scan-result p {
-  font-size: 12px;
-  color: #949f85;
-  margin: 9px 0;
-}
-.scan-result small {
-  font-size: 12px;
-  color: #a6ac9a;
 }
 .backup-panel {
   margin-top: 24px;
@@ -1133,35 +962,6 @@ h1 {
 .file-label:focus-within {
   outline: 3px solid #a5b594;
   outline-offset: 3px;
-}
-.metrics {
-  margin-top: 20px;
-}
-.metrics h3 {
-  font:
-    20px Georgia,
-    serif;
-}
-.metrics p {
-  font-size: 12px;
-  color: #8c967f;
-}
-.metrics-table {
-  border-collapse: collapse;
-  font-size: 12px;
-  width: 100%;
-  min-width: 480px;
-  margin-bottom: 15px;
-}
-.metrics-table th,
-.metrics-table td {
-  padding: 10px;
-  border: 1px solid var(--line);
-  text-align: center;
-  font-weight: 400;
-}
-.metrics-table th {
-  background: #f3f5ed;
 }
 
 .sr-only {
@@ -1209,8 +1009,7 @@ h1 {
   .cell {
     min-height: 23px;
   }
-  .print-card,
-  .scan-card {
+  .print-card {
     padding: 28px 30px;
   }
   .tools-grid h3 {
@@ -1218,9 +1017,6 @@ h1 {
   }
   .tools-grid p {
     font-size: 12px;
-  }
-  .upload-zone {
-    min-height: 172px;
   }
   .paper-preview {
     aspect-ratio: 297/150;
@@ -1263,8 +1059,7 @@ h1 {
   .tools-grid h3 {
     font-size: 20px;
   }
-  .print-card,
-  .scan-card {
+  .print-card {
     padding: 20px;
   }
 
@@ -1373,15 +1168,6 @@ h1 {
   .paper-lines > div {
     gap: 0;
   }
-  .upload-zone {
-    min-height: 135px;
-    padding: 12px;
-  }
-  .upload-zone b {
-    font-size: 12px;
-    text-align: center;
-    line-height: 1.5;
-  }
   .save-bar {
     flex-wrap: wrap;
   }
@@ -1395,13 +1181,6 @@ h1 {
 
   .panel-heading .quiet-label {
     font-size: 12px;
-  }
-
-  .scan-result {
-    flex-wrap: wrap;
-  }
-  .scanner-panel {
-    padding: 20px;
   }
 }
 @media (max-width: 580px) {
@@ -1531,8 +1310,7 @@ h1 {
   .tools-grid p {
     font-size: 12px;
   }
-  .print-card,
-  .scan-card {
+  .print-card {
     padding: 24px;
   }
   .paper-preview {
@@ -1552,15 +1330,6 @@ h1 {
   .print-card-bottom {
     margin-top: 22px;
   }
-  .upload-zone {
-    min-height: 145px;
-  }
-  .upload-zone b {
-    font-size: 12px;
-  }
-  .privacy-line {
-    font-size: 12px;
-  }
 
   .lab-body {
     padding: 15px;
@@ -1571,22 +1340,6 @@ h1 {
   .lab-actions .button {
     font-size: 12px;
     padding: 9px;
-  }
-  .scan-controls .button {
-    font-size: 12px;
-  }
-  .scanner-panel {
-    padding: 16px;
-  }
-  .scanner-panel .panel-heading {
-    align-items: flex-start;
-  }
-  .scanner-panel .panel-heading h2 {
-    font-size: 21px;
-  }
-  .scanner-panel .panel-heading .button {
-    font-size: 12px;
-    padding: 6px;
   }
 
   .desktop-break {
@@ -2019,14 +1772,6 @@ html {
   .habit-row-actions {
     margin-left: auto;
     margin-bottom: 6px;
-  }
-  .scan-controls .button,
-  .scan-result .button,
-  .scanner-panel .panel-heading .button {
-    white-space: normal;
-  }
-  .scanner-panel .panel-heading {
-    flex-wrap: wrap;
   }
   .heading-month-picker {
     margin-left: 0;

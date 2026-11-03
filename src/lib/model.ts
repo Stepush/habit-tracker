@@ -1,18 +1,28 @@
 export const HABITS = [
-  { id: "read", name: "Читать 20 минут", color: "#7a9271", short: "Чтение" },
   {
-    id: "move",
+    id: "27f5a849-9b01-47d2-a1ef-2df6a4b670c8",
+    name: "Читать 20 минут",
+    color: "#7a9271",
+    short: "Чтение",
+  },
+  {
+    id: "cd06f0c1-71b4-44ba-b19d-0d1b9d1e8e70",
     name: "Двигаться каждый день",
     color: "#c69372",
     short: "Движение",
   },
   {
-    id: "water",
+    id: "e8a47d3c-0db5-421b-88f8-595a4958c4f3",
     name: "Пить достаточно воды",
     color: "#7a9ca9",
     short: "Вода",
   },
-  { id: "quiet", name: "Время для себя", color: "#a393b8", short: "Тишина" },
+  {
+    id: "b130cb96-38fe-4fb5-81c8-95e8a7d2d6a4",
+    name: "Время для себя",
+    color: "#a393b8",
+    short: "Тишина",
+  },
 ] as const;
 export type Habit = { id: string; name: string; color: string; short: string };
 export const MIN_HABITS = 1;
@@ -42,22 +52,6 @@ export function validHabits(value: unknown): value is Habit[] {
 export const STATUSES = ["missed", "completed"] as const;
 export type Status = (typeof STATUSES)[number];
 export type Grid = Status[][];
-export type Point = { x: number; y: number };
-export type CellPrediction = {
-  row: number;
-  day: number;
-  status: Status;
-  score: number;
-  needsReview: boolean;
-  coverage: number;
-};
-export type ScanResult = {
-  cells: CellPrediction[];
-  width: number;
-  height: number;
-  rgba: Uint8ClampedArray;
-  manual: boolean;
-};
 export const STATUS_LABELS: Record<Status, string> = {
   missed: "Не выполнено",
   completed: "Выполнено",
@@ -69,12 +63,6 @@ export const FORMAT = {
   gridX: 68,
   gridY: 66,
   cell: 7,
-  markers: [
-    { x: 15, y: 15 },
-    { x: 282, y: 15 },
-    { x: 282, y: 195 },
-    { x: 15, y: 195 },
-  ] as Point[],
 };
 export function daysInMonth(month: string): number {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error("Invalid month");
@@ -151,34 +139,46 @@ export function monthLabel(month: string) {
     timeZone: "UTC",
   }).format(new Date(`${month}-01T12:00:00Z`));
 }
-export function templateId(
-  month: string,
-  habitIds: readonly string[] = HABITS.map((h) => h.id),
-) {
-  daysInMonth(month);
-  const version = qrPayload(month, habitIds).startsWith("paper:v1:") ? 1 : 2;
-  return `PAPER-V${version}-${month}-${habitIds.length}`;
-}
-export function qrPayload(
-  month: string,
-  habitIds: readonly string[] = HABITS.map((h) => h.id),
-) {
-  return JSON.stringify(habitIds) === JSON.stringify(HABITS.map((h) => h.id))
-    ? `paper:v1:${month}:fixed4`
-    : `paper:v2:${month}:${JSON.stringify(habitIds)}`;
-}
-export function monthFromQR(payload: string): string | null {
-  const match =
-    /^paper:v1:(\d{4}-\d{2}):fixed4$/.exec(payload) ||
-    /^paper:v2:(\d{4}-\d{2}):\[.*\]$/.exec(payload);
-  if (!match) return null;
-  try {
-    daysInMonth(match[1]);
-    return match[1];
-  } catch {
-    return null;
-  }
-}
 export function storageKey(month: string) {
   return `paper-first:v1:${month}`;
+}
+
+export const HABIT_COLORS = [
+  "#7a9271",
+  "#c69372",
+  "#7a9ca9",
+  "#a393b8",
+  "#c58d9b",
+  "#baa362",
+  "#71a49b",
+  "#929fc5",
+  "#b29b87",
+  "#9baa75",
+] as const;
+const LEGACY_HABIT_IDS: Record<string, string> = {
+  read: "27f5a849-9b01-47d2-a1ef-2df6a4b670c8",
+  move: "cd06f0c1-71b4-44ba-b19d-0d1b9d1e8e70",
+  water: "e8a47d3c-0db5-421b-88f8-595a4958c4f3",
+  quiet: "b130cb96-38fe-4fb5-81c8-95e8a7d2d6a4",
+};
+export function nextHabitColor(habits: readonly Habit[]): string {
+  const used = new Set(habits.map((habit) => habit.color.toLowerCase()));
+  const color = HABIT_COLORS.find((color) => !used.has(color));
+  if (!color) throw new Error("Нет свободного цвета для привычки.");
+  return color;
+}
+// Stable migration keeps identities and completion rows aligned across months.
+export function normalizeHabits(habits: readonly Habit[]): Habit[] {
+  const used = new Set<string>();
+  return habits.map((habit) => {
+    const color = used.has(habit.color.toLowerCase())
+      ? (HABIT_COLORS.find(
+          (candidate) =>
+            !used.has(candidate) &&
+            !habits.some((h) => h.color.toLowerCase() === candidate),
+        ) ?? HABIT_COLORS.find((candidate) => !used.has(candidate))!)
+      : habit.color;
+    used.add(color.toLowerCase());
+    return { ...habit, id: LEGACY_HABIT_IDS[habit.id] ?? habit.id, color };
+  });
 }

@@ -11,12 +11,9 @@ import {
   completionChange,
   validGrid,
   migrateLegacyGrid,
-  monthFromQR,
-  qrPayload,
   HABITS,
   validHabits,
 } from "../src/lib/model";
-import { classify, type Sample } from "../src/lib/classify";
 import { createTemplatePDF } from "../src/lib/pdf";
 
 test("calendar respects leap years and rejects invalid months", () => {
@@ -66,12 +63,6 @@ test("custom habit records validate identity, labels, colors and row count", () 
   assert.equal(validHabits([...habits, habits[0]]), false);
   assert.equal(validHabits([{ ...habits[0], name: "   " }]), false);
   assert.equal(validHabits([{ ...habits[0], color: "red" }]), false);
-  const ids = habits.map((h) => h.id);
-  assert.equal(monthFromQR(qrPayload("2026-02", ids)), "2026-02");
-  assert.notEqual(
-    qrPayload("2026-02", ids),
-    qrPayload("2026-02", [...ids].reverse()),
-  );
 });
 test("completion includes every cell in the selected month", () => {
   assert.deepEqual(summarize([["completed", "missed"]]), {
@@ -100,52 +91,11 @@ test("completion change subtracts displayed monthly percentages", () => {
   assert.equal(completionChange(stats(60), undefined), null);
   assert.equal(completionChange(summarize([]), stats(40)), null);
 });
-test("QR identifies the fixed version and month", () => {
-  assert.equal(monthFromQR(qrPayload("2026-10")), "2026-10");
-  assert.equal(monthFromQR("paper:v2:2026-10:fixed4"), null);
-  assert.equal(monthFromQR("paper:v1:2026-13:fixed4"), null);
-});
 test("landscape geometry has square 7 mm cells and fits all 31 days", () => {
   assert.equal(FORMAT.width, 297);
   assert.equal(FORMAT.height, 210);
   assert.equal(FORMAT.gridX + 31 * FORMAT.cell, 285);
   assert.equal(FORMAT.width - 285, 12);
-});
-function fixture(
-  kind: "empty" | "full" | "half" | "cross" | "ambiguous",
-): Sample[] {
-  const samples: Sample[] = [];
-  for (let y = 0; y < 25; y++)
-    for (let x = 0; x < 25; x++) {
-      const xx = x / 24,
-        yy = y / 24;
-      const ink =
-        kind === "full" ||
-        (kind === "half" && xx < 0.5) ||
-        (kind === "cross" &&
-          (Math.abs(xx - yy) < 0.13 || Math.abs(xx + yy - 1) < 0.13)) ||
-        (kind === "ambiguous" &&
-          xx > 0.25 &&
-          xx < 0.75 &&
-          yy > 0.25 &&
-          yy < 0.75);
-      samples.push({
-        x: xx,
-        y: yy,
-        r: ink ? 70 : 250,
-        g: ink ? 95 : 250,
-        b: ink ? 65 : 250,
-      });
-    }
-  return samples;
-}
-test("classifier has basic synthetic checks, not real-photo accuracy claims", () => {
-  assert.equal(classify(fixture("empty"), 250).status, "missed");
-  assert.equal(classify(fixture("full"), 250).status, "completed");
-  assert.equal(classify(fixture("half"), 250).status, "missed");
-  assert.equal(classify(fixture("half"), 250).needsReview, true);
-  assert.equal(classify(fixture("cross"), 250).status, "missed");
-  assert.equal(classify(fixture("ambiguous"), 250).needsReview, true);
 });
 test("generated PDF is a single landscape A4 page", async () => {
   const bytes = await createTemplatePDF(
@@ -164,7 +114,7 @@ test("custom PDF uses the selected habit layout and checks sheet capacity", asyn
   const doc = await PDFDocument.load(
     await createTemplatePDF("2026-10", font, habits),
   );
-  assert.match(doc.getSubject() || "", /PAPER-V2-2026-10-2/);
+  assert.match(doc.getSubject() || "", /Habit tracker 2026-10/);
   assert.equal(doc.getPageCount(), 1);
   const fullSheet = await PDFDocument.load(
     await createTemplatePDF(

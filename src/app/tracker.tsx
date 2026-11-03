@@ -3,7 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import MonthStatistics from "./month-statistics";
 import Toast from "./toast";
-import type { MonthStorage } from "@/lib/month-storage";
+import {
+  loadMonth,
+  planMonthSave,
+  type MonthStorage,
+} from "@/lib/month-storage";
 import type { BackupMonth } from "@/lib/backup";
 import {
   collectBackup,
@@ -28,29 +32,22 @@ import {
   LogOut,
   Plus,
   UserRound,
-  ScanLine,
   X,
-  Target,
 } from "lucide-react";
 import {
-  FORMAT,
   HABITS,
   MIN_HABITS,
   MAX_HABITS,
-  STATUSES,
   STATUS_LABELS,
   daysInMonth,
   emptyGrid,
   monthLabel,
   monthCalendar,
-  storageKey,
-  validGrid,
-  migrateLegacyGrid,
   validHabits,
+  nextHabitColor,
+  storageKey,
   type Habit,
   type Grid,
-  type Point,
-  type ScanResult,
   type Status,
 } from "@/lib/model";
 
@@ -61,7 +58,6 @@ type SavedMonth = {
   grid: Grid;
   savedAt: string;
 };
-type SourceImage = { rgba: Uint8ClampedArray; width: number; height: number };
 const INITIAL_MONTH = "2026-10";
 const NAVIGATION = [
   { id: "habits", label: "Трекер", icon: Grid2X2 },
@@ -69,12 +65,6 @@ const NAVIGATION = [
   { id: "backup", label: "Резервная копия", icon: Archive },
 ] as const;
 type SectionId = (typeof NAVIGATION)[number]["id"];
-const CORNER_NAMES = [
-  "верхний левый",
-  "верхний правый",
-  "нижний правый",
-  "нижний левый",
-];
 function clone(grid: Grid): Grid {
   return grid.map((row) => [...row]);
 }
@@ -87,12 +77,10 @@ function download(data: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 export default function Tracker({
-  showDiagnostics = false,
   storage,
   persist,
   user,
 }: {
-  showDiagnostics?: boolean;
   storage?: MonthStorage;
   persist?: (records: BackupMonth[]) => Promise<void>;
   user?: { name: string; email: string; sub: string };
@@ -117,25 +105,13 @@ export default function Tracker({
   const [error, setError] = useState("");
   const [backupMessage, setBackupMessage] = useState("");
   const [historyRevision, setHistoryRevision] = useState(0);
-  const [pdfBusy, setPdfBusy] = useState(false),
-    [scanBusy, setScanBusy] = useState(false),
-    [progress, setProgress] = useState("");
-  const [source, setSource] = useState<SourceImage | null>(null),
-    [result, setResult] = useState<ScanResult | null>(null);
-  const [manual, setManual] = useState(false),
-    [corners, setCorners] = useState<Point[]>([]),
-    [pending, setPending] = useState<Set<string>>(new Set());
-  const [truth, setTruth] = useState<Grid | null>(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionId>("habits");
   const [pickerYear, setPickerYear] = useState(
     Number(INITIAL_MONTH.slice(0, 4)),
   );
   const navigationTarget = useRef<SectionId | null>(null);
   const initializedMonth = useRef(false);
-  const canvas = useRef<HTMLCanvasElement>(null),
-    corrected = useRef<HTMLCanvasElement>(null),
-    scanner = useRef<Worker | null>(null),
-    fileInput = useRef<HTMLInputElement>(null);
   const dirty =
       JSON.stringify(grid) !== JSON.stringify(saved) ||
       JSON.stringify(habits) !== JSON.stringify(savedHabits),
@@ -163,21 +139,9 @@ export default function Tracker({
     let next = emptyGrid(month);
     let nextHabits: Habit[] = HABITS.map((h) => ({ ...h }));
     try {
-      const raw = dataStorage().getItem(storageKey(month));
-      if (raw) {
-        const value = JSON.parse(raw);
-        if (value && typeof value === "object")
-          value.grid = migrateLegacyGrid(value.grid);
-        if (
-          value.version !== 1 ||
-          value.month !== month ||
-          (value.habits !== undefined && !validHabits(value.habits)) ||
-          !validGrid(value.grid, month, value.habits?.length ?? HABITS.length)
-        )
-          throw new Error("Неверный формат сохранённого месяца.");
-        next = value.grid;
-        nextHabits = value.habits ?? nextHabits;
-      }
+      const record = loadMonth(dataStorage(), month);
+      next = record.grid;
+      nextHabits = record.habits;
     } catch {
       setError(
         "Не удалось прочитать сохранённый месяц. Восстановите данные из резервной копии.",
@@ -187,12 +151,6 @@ export default function Tracker({
     setSavedHabits(nextHabits.map((h) => ({ ...h })));
     setGrid(clone(next));
     setSaved(clone(next));
-    setPending(new Set());
-    setTruth(null);
-    setResult(null);
-    setSource(null);
-    setManual(false);
-    setCorners([]);
     setReady(true);
   }, [month, storage]);
   useEffect(() => {
@@ -205,74 +163,6 @@ export default function Tracker({
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
-  useEffect(
-    () => () => {
-      scanner.current?.terminate();
-    },
-    [],
-  );
-  useEffect(() => {
-    if (!source || !canvas.current) return;
-    const node = canvas.current;
-    node.width = source.width;
-    node.height = source.height;
-    const ctx = node.getContext("2d");
-    if (!ctx) return;
-    ctx.putImageData(
-      new ImageData(
-        new Uint8ClampedArray(source.rgba),
-        source.width,
-        source.height,
-      ),
-      0,
-      0,
-    );
-    corners.forEach((point, i) => {
-      const radius = Math.max(14, source.width / 60);
-      ctx.beginPath();
-      ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = "#52694b";
-      ctx.fill();
-      ctx.strokeStyle = "white";
-      ctx.lineWidth = 3;
-      ctx.stroke();
-      ctx.fillStyle = "white";
-      ctx.font = `bold ${radius * 1.2}px sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(String(i + 1), point.x, point.y);
-    });
-  }, [source, corners]);
-  useEffect(() => {
-    if (!result || !corrected.current) return;
-    const node = corrected.current;
-    node.width = result.width;
-    node.height = result.height;
-    const ctx = node.getContext("2d");
-    if (!ctx) return;
-    ctx.putImageData(
-      new ImageData(
-        new Uint8ClampedArray(result.rgba),
-        result.width,
-        result.height,
-      ),
-      0,
-      0,
-    );
-    ctx.strokeStyle = "#c77f37";
-    ctx.lineWidth = 2;
-    result.cells
-      .filter((c) => c.needsReview)
-      .forEach((c) =>
-        ctx.strokeRect(
-          (FORMAT.gridX + c.day * 7) * 5,
-          (FORMAT.gridY + c.row * 7) * 5,
-          35,
-          35,
-        ),
-      );
-  }, [result]);
-
   useEffect(() => {
     let frame = 0;
     const updateSection = () => {
@@ -363,7 +253,6 @@ export default function Tracker({
       return;
     }
     if (
-      scanBusy ||
       saving ||
       (dirty &&
         !window.confirm(
@@ -389,11 +278,6 @@ export default function Tracker({
           : cells,
       ),
     );
-    setPending((current) => {
-      const next = new Set(current);
-      next.delete(`${row}:${day}`);
-      return next;
-    });
   }
   function updateHabitOrder(next: Habit[]) {
     if (next.length < MIN_HABITS || next.length > MAX_HABITS) return;
@@ -403,18 +287,7 @@ export default function Tracker({
         index < 0 ? Array<Status>(dayCount).fill("missed") : [...grid[index]],
       ),
     );
-    setPending(
-      new Set(
-        indices.flatMap((oldIndex, index) =>
-          Array.from({ length: dayCount }, (_, day) =>
-            pending.has(`${oldIndex}:${day}`) ? `${index}:${day}` : null,
-          ).filter((key): key is string => key !== null),
-        ),
-      ),
-    );
     setHabits(next);
-    setResult(null);
-    setTruth(null);
   }
   function addHabit() {
     if (habits.length >= MAX_HABITS) return;
@@ -426,7 +299,7 @@ export default function Tracker({
         id,
         name: "",
         short: "",
-        color: HABITS[habits.length % HABITS.length].color,
+        color: nextHabitColor(habits),
       },
     ]);
   }
@@ -469,14 +342,14 @@ export default function Tracker({
         habits: normalized,
         savedAt: timestamp,
       };
-      if (persist) await persist([parseMonth(payload)]);
-      dataStorage().setItem(storageKey(month), JSON.stringify(payload));
+      const records = planMonthSave(dataStorage(), parseMonth(payload));
+      if (persist) await persist(records);
+      restoreBackup(dataStorage(), records);
       setHistoryRevision((revision) => revision + 1);
       setSaved(clone(grid));
       setHabits(normalized);
       setSavedHabits(normalized.map((h) => ({ ...h })));
       setMode("view");
-      setPending(new Set());
       setError("");
     } catch (error) {
       setError(
@@ -517,119 +390,6 @@ export default function Tracker({
       setPdfBusy(false);
     }
   }
-  async function loadPhoto(file?: File) {
-    if (!file) return;
-    setError("");
-    setResult(null);
-    setSource(null);
-    setManual(false);
-    setCorners([]);
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      setError(
-        "Выберите JPEG, PNG или WebP. HEIC сначала преобразуйте в JPEG.",
-      );
-      return;
-    }
-    if (file.size > 25 * 1024 * 1024) {
-      setError("Файл больше 25 МБ. Уменьшите фотографию.");
-      return;
-    }
-    setScanBusy(true);
-    try {
-      const image = await createImageBitmap(file, {
-        imageOrientation: "from-image",
-      });
-      try {
-        const scale = Math.min(1, 2200 / Math.max(image.width, image.height)),
-          node = document.createElement("canvas");
-        node.width = Math.round(image.width * scale);
-        node.height = Math.round(image.height * scale);
-        const ctx = node.getContext("2d", { willReadFrequently: true });
-        if (!ctx) throw new Error("Canvas недоступен.");
-        ctx.fillStyle = "white";
-        ctx.fillRect(0, 0, node.width, node.height);
-        ctx.drawImage(image, 0, 0, node.width, node.height);
-        const rgba = ctx.getImageData(0, 0, node.width, node.height).data;
-        setSource({ rgba, width: node.width, height: node.height });
-        requestAnimationFrame(() => {
-          document.getElementById("photo-review")?.scrollIntoView({
-            behavior: "smooth",
-            block: "start",
-          });
-        });
-      } finally {
-        image.close();
-      }
-    } catch {
-      setError(
-        "Браузер не смог открыть фото. Попробуйте JPEG или заполните таблицу вручную.",
-      );
-    } finally {
-      setScanBusy(false);
-    }
-  }
-  function scan() {
-    if (!source) return;
-    setScanBusy(true);
-    setError("");
-    setResult(null);
-    setProgress("Подготавливаем сканер…");
-    scanner.current?.terminate();
-    const worker = new Worker("/scanner.worker.js");
-    scanner.current = worker;
-    const timeout = setTimeout(() => {
-      worker.terminate();
-      setScanBusy(false);
-      setError(
-        "Обработка заняла больше минуты. Уменьшите фото или заполните таблицу вручную.",
-      );
-    }, 60000);
-    worker.onmessage = (event) => {
-      const data = event.data;
-      if (data.type === "progress") {
-        setProgress(data.message);
-        return;
-      }
-      clearTimeout(timeout);
-      setScanBusy(false);
-      worker.terminate();
-      if (data.type === "error") {
-        setError(data.message);
-        return;
-      }
-      setResult(data.result);
-    };
-    worker.onerror = () => {
-      clearTimeout(timeout);
-      setScanBusy(false);
-      worker.terminate();
-      setError(
-        "Не удалось распознать лист. Попробуйте другое фото или заполните таблицу вручную.",
-      );
-    };
-    worker.postMessage({
-      ...source,
-      rgba: new Uint8ClampedArray(source.rgba),
-      month,
-      habitIds: habits.map((h) => h.id),
-      ...(manual ? { corners } : {}),
-    });
-  }
-  function applyResult() {
-    if (!result) return;
-    const next = emptyGrid(month, habits.length),
-      flagged = new Set<string>();
-    result.cells.forEach((c) => {
-      next[c.row][c.day] = c.status;
-      if (c.needsReview) flagged.add(`${c.row}:${c.day}`);
-    });
-    setGrid(next);
-    setMode("fill");
-    setPending(flagged);
-    document
-      .getElementById("month-grid")
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }
   function exportJSON(all = false) {
     setBackupMessage("");
     try {
@@ -648,7 +408,7 @@ export default function Tracker({
       );
     }
   }
-  async function importJSON(file?: File, asTruth = false) {
+  async function importJSON(file?: File) {
     if (!file || writing.current) return;
     writing.current = true;
     setSaving(true);
@@ -657,20 +417,6 @@ export default function Tracker({
       if (file.size > 20_000_000)
         throw new Error("Файл слишком большой (максимум 20 МБ).");
       const records = parseBackup(JSON.parse(await file.text()));
-      if (asTruth) {
-        const record = records.find((r) => r.month === month);
-        if (
-          !record ||
-          JSON.stringify(record.habitIds) !==
-            JSON.stringify(habits.map((h) => h.id))
-        )
-          throw new Error(
-            "Месяц, состав и порядок привычек эталона должны совпадать с таблицей.",
-          );
-        setTruth(clone(record.grid));
-        setError("");
-        return;
-      }
       const overlaps = records.filter(
         (r) => dataStorage().getItem(storageKey(r.month)) !== null,
       );
@@ -690,13 +436,7 @@ export default function Tracker({
         setSavedHabits(current.habits.map((h) => ({ ...h })));
         setGrid(clone(current.grid));
         setSaved(clone(current.grid));
-        setResult(null);
-        setTruth(null);
-        setSource(null);
-        setManual(false);
-        setCorners([]);
         setMode("view");
-        setPending(new Set());
         setShowHabitErrors(false);
       } else if (!dirty) {
         setMonth(records[0].month);
@@ -710,23 +450,6 @@ export default function Tracker({
       setSaving(false);
     }
   }
-  const accuracy =
-    truth && result
-      ? result.cells.filter((c) => truth[c.row][c.day] === c.status).length /
-        result.cells.length
-      : null;
-  const confusion =
-    truth && result
-      ? STATUSES.map((actual) =>
-          STATUSES.map(
-            (predicted) =>
-              result.cells.filter(
-                (c) => truth[c.row][c.day] === actual && c.status === predicted,
-              ).length,
-          ),
-        )
-      : null;
-
   return (
     <fieldset className="app-shell" aria-busy={saving} disabled={saving}>
       {saving && (
@@ -863,7 +586,6 @@ export default function Tracker({
                 className="month-step"
                 aria-label="Сегодня — текущий месяц"
                 title="Сегодня"
-                disabled={scanBusy}
                 onClick={() => {
                   const today = new Date();
                   changeMonth(
@@ -885,7 +607,7 @@ export default function Tracker({
                 className="month-step"
                 aria-label="Предыдущий месяц"
                 onClick={() => stepMonth(-1)}
-                disabled={scanBusy || month === "2000-01"}
+                disabled={month === "2000-01"}
               >
                 <ArrowLeft size={20} />
               </button>
@@ -893,7 +615,7 @@ export default function Tracker({
                 className="month-step"
                 aria-label="Следующий месяц"
                 onClick={() => stepMonth(1)}
-                disabled={scanBusy || month === "2100-12"}
+                disabled={month === "2100-12"}
               >
                 <ArrowRight size={20} />
               </button>
@@ -952,7 +674,6 @@ export default function Tracker({
                           key={value}
                           aria-label={`${label} ${pickerYear}`}
                           aria-pressed={month === value}
-                          disabled={scanBusy}
                           onClick={(e) => {
                             changeMonth(value);
                             const picker = e.currentTarget.closest("details");
@@ -1030,7 +751,6 @@ export default function Tracker({
                                 value={habit.name}
                                 maxLength={80}
                                 autoFocus={habit.id === newHabitId}
-                                disabled={scanBusy}
                                 onChange={(event) =>
                                   setHabits((current) =>
                                     current.map((h) =>
@@ -1060,7 +780,7 @@ export default function Tracker({
                                 type="button"
                                 aria-label={`Поднять привычку ${row + 1}`}
                                 title="Переместить выше"
-                                disabled={row === 0 || scanBusy}
+                                disabled={row === 0}
                                 onClick={() => moveHabit(row, -1)}
                               >
                                 <ArrowUp size={20} aria-hidden="true" />
@@ -1069,7 +789,7 @@ export default function Tracker({
                                 type="button"
                                 aria-label={`Опустить привычку ${row + 1}`}
                                 title="Переместить ниже"
-                                disabled={row === habits.length - 1 || scanBusy}
+                                disabled={row === habits.length - 1}
                                 onClick={() => moveHabit(row, 1)}
                               >
                                 <ArrowDown size={20} aria-hidden="true" />
@@ -1082,9 +802,7 @@ export default function Tracker({
                                     ? "Нужна хотя бы одна привычка"
                                     : "Удалить привычку"
                                 }
-                                disabled={
-                                  scanBusy || habits.length <= MIN_HABITS
-                                }
+                                disabled={habits.length <= MIN_HABITS}
                                 onClick={() =>
                                   updateHabitOrder(
                                     habits.filter((h) => h.id !== habit.id),
@@ -1107,9 +825,9 @@ export default function Tracker({
                           <td key={day}>
                             <button
                               disabled={!ready || mode !== "fill"}
-                              aria-label={`${habit.name}, ${day + 1}: ${STATUS_LABELS[grid[row]?.[day] || "missed"]}${pending.has(`${row}:${day}`) ? ", проверить" : ""}`}
+                              aria-label={`${habit.name}, ${day + 1}: ${STATUS_LABELS[grid[row]?.[day] || "missed"]}`}
                               title={`${day + 1} — ${STATUS_LABELS[grid[row]?.[day] || "missed"]}`}
-                              className={`cell ${grid[row]?.[day] || "missed"} ${pending.has(`${row}:${day}`) ? "uncertain" : ""}`}
+                              className={`cell ${grid[row]?.[day] || "missed"}`}
                               aria-pressed={grid[row]?.[day] === "completed"}
                               onClick={() => paint(row, day)}
                             ></button>
@@ -1136,7 +854,7 @@ export default function Tracker({
               <div className="habit-add-row">
                 <button
                   className="button subtle add-habit"
-                  disabled={scanBusy || habits.length >= MAX_HABITS}
+                  disabled={habits.length >= MAX_HABITS}
                   onClick={addHabit}
                 >
                   <Plus size={16} aria-hidden="true" />
@@ -1151,37 +869,16 @@ export default function Tracker({
                 </span>
               </div>
             )}
-            {mode === "fill" && pending.size > 0 && (
-              <div className="grid-caption">
-                <span>
-                  <span className="dashed-square" />
-                  {pending.size} клеток требуют внимания
-                </span>
-              </div>
-            )}
             <div className="save-bar">
-              {mode === "fill" && (
-                <div className="painting-toolbar">
-                  <button
-                    className="button subtle"
-                    disabled={scanBusy}
-                    onClick={() => fileInput.current?.click()}
-                  >
-                    Загрузить фото листа
-                  </button>
-                </div>
-              )}
               <div className={`save-actions${isEditing ? " editing" : ""}`}>
                 {isEditing ? (
                   <>
                     <button
                       className="button subtle"
-                      disabled={scanBusy}
                       onClick={() => {
                         setGrid(clone(saved));
                         setHabits(savedHabits.map((h) => ({ ...h })));
                         setMode("view");
-                        setPending(new Set());
                       }}
                     >
                       Отменить
@@ -1189,7 +886,7 @@ export default function Tracker({
                     <button
                       className="button primary"
                       onClick={save}
-                      disabled={!ready || scanBusy}
+                      disabled={!ready}
                     >
                       Сохранить
                     </button>
@@ -1198,7 +895,7 @@ export default function Tracker({
                   <>
                     <button
                       className="button primary"
-                      disabled={!ready || scanBusy || habits.length === 0}
+                      disabled={!ready || habits.length === 0}
                       onClick={() => {
                         setMode("fill");
                       }}
@@ -1207,7 +904,7 @@ export default function Tracker({
                     </button>
                     <button
                       className="button subtle"
-                      disabled={!ready || scanBusy}
+                      disabled={!ready}
                       onClick={() => {
                         setMode("habits");
                         setShowHabitErrors(false);
@@ -1255,8 +952,6 @@ export default function Tracker({
                 role="img"
                 aria-label={`Чистый лист на ${monthLabel(month)}: ${habits.map((habit) => habit.name).join(", ")}`}
               >
-                <div className="paper-corner tl" />
-                <div className="paper-corner tr" />
                 <b className="paper-sheet-brand">Ритм</b>
                 <h3>{monthLabel(month).replace(" г.", "")}</h3>
                 <div className="paper-sheet-table">
@@ -1284,184 +979,21 @@ export default function Tracker({
                     ))}
                   </div>
                 </div>
-                <div className="paper-corner bl" />
-                <div className="paper-corner br" />
               </div>
             </div>
           </section>
-          <input
-            ref={fileInput}
-            type="file"
-            className="sr-only"
-            accept="image/jpeg,image/png,image/webp"
-            onChange={(e) => {
-              void loadPhoto(e.target.files?.[0]);
-              e.target.value = "";
-            }}
-          />
-          {source && (
-            <section className="panel scanner-panel" id="photo-review">
-              <div className="panel-heading">
-                <div>
-                  <h2>Проверка фотографии</h2>
-                </div>
-                <button
-                  className="button subtle"
-                  disabled={scanBusy}
-                  onClick={() => {
-                    setSource(null);
-                    setResult(null);
-                    setCorners([]);
-                    setManual(false);
-                    scanner.current?.terminate();
-                  }}
-                >
-                  Убрать фото <X size={15} />
-                </button>
-              </div>
-              <p className="muted">
-                Проверьте распознанные отметки перед сохранением.
-              </p>
-              <div className="scan-preview-grid">
-                <div>
-                  <div className="image-label">
-                    Исходное фото{" "}
-                    {manual &&
-                      `· укажите ${CORNER_NAMES[corners.length] || "все маркеры"}`}
-                  </div>
-                  <canvas
-                    aria-label="Фотография листа. В ручном режиме нажмите на центры четырёх маркеров."
-                    ref={canvas}
-                    className={manual ? "photo-canvas picking" : "photo-canvas"}
-                    onClick={(e) => {
-                      if (
-                        !manual ||
-                        scanBusy ||
-                        corners.length === 4 ||
-                        !canvas.current
-                      )
-                        return;
-                      const box = e.currentTarget.getBoundingClientRect();
-                      setCorners((current) => [
-                        ...current,
-                        {
-                          x:
-                            ((e.clientX - box.left) * source.width) / box.width,
-                          y:
-                            ((e.clientY - box.top) * source.height) /
-                            box.height,
-                        },
-                      ]);
-                    }}
-                  />
-                </div>
-                {result && (
-                  <div>
-                    <div className="image-label">
-                      Выровненный лист · сомнительные клетки выделены
-                    </div>
-                    <canvas
-                      ref={corrected}
-                      className="photo-canvas"
-                      aria-label="Выровненный лист с результатами анализа"
-                    />
-                  </div>
-                )}
-              </div>
-              <div className="scan-controls">
-                <button
-                  className="button primary"
-                  disabled={scanBusy || (manual && corners.length !== 4)}
-                  onClick={scan}
-                >
-                  {scanBusy ? (
-                    <LoaderCircle size={16} className="spin" />
-                  ) : (
-                    <ScanLine size={16} />
-                  )}
-                  Распознать лист
-                </button>
-                <button
-                  className="button secondary"
-                  disabled={scanBusy}
-                  onClick={() => {
-                    setManual((v) => !v);
-                    setCorners([]);
-                  }}
-                >
-                  <Target size={16} />
-                  {manual
-                    ? "Автоматическое выравнивание"
-                    : "Указать маркеры вручную"}
-                </button>
-                {manual && (
-                  <button
-                    className="text-button"
-                    disabled={scanBusy}
-                    onClick={() => setCorners([])}
-                  >
-                    Сбросить точки
-                  </button>
-                )}
-              </div>
-              {manual && (
-                <p className="manual-note">
-                  Укажите центры маркеров в порядке: верхний левый → верхний
-                  правый → нижний правый → нижний левый по ориентации текста
-                  листа. Без читаемого QR используется выбранный месяц:{" "}
-                  {monthLabel(month)}.
-                </p>
-              )}
-              {scanBusy && (
-                <p role="status" className="muted">
-                  {progress}
-                </p>
-              )}
-              {result && (
-                <div className="scan-result">
-                  <div>
-                    <b>Результат распознавания</b>
-                    <p>
-                      {result.cells.length} клеток ·{" "}
-                      {result.cells.filter((c) => c.needsReview).length}{" "}
-                      сомнительных ·{" "}
-                      {result.manual ? "ручное" : "автоматическое"} выравнивание
-                    </p>
-                  </div>
-                  <button
-                    className="button primary"
-                    onClick={() => {
-                      if (
-                        !dirty ||
-                        window.confirm(
-                          "Заменить текущий черновик результатом сканирования?",
-                        )
-                      )
-                        applyResult();
-                    }}
-                  >
-                    Применить к черновику <ArrowRight size={16} />
-                  </button>
-                </div>
-              )}
-            </section>
-          )}
           <section
             className="panel backup-panel"
             id="backup"
             aria-labelledby="backup-title"
           >
-            <h2 id="backup-title">
-              {showDiagnostics
-                ? "Резервная копия и проверка распознавания"
-                : "Резервная копия"}
-            </h2>
+            <h2 id="backup-title">Резервная копия</h2>
             <p className="backup-format">Формат файлов — JSON</p>
             <div className="lab-body">
               <div className="lab-actions">
                 <button
                   className="button secondary"
-                  disabled={!ready || scanBusy}
+                  disabled={!ready}
                   onClick={() => exportJSON(true)}
                 >
                   <ArrowDownToLine size={15} />
@@ -1470,7 +1002,7 @@ export default function Tracker({
                 <div className="backup-month-export">
                   <button
                     className="button secondary"
-                    disabled={!ready || scanBusy}
+                    disabled={!ready}
                     onClick={() => exportJSON()}
                   >
                     <ArrowDownToLine size={15} />
@@ -1486,106 +1018,13 @@ export default function Tracker({
                   <input
                     type="file"
                     accept="application/json,.json"
-                    disabled={scanBusy}
                     onChange={(e) => {
                       void importJSON(e.target.files?.[0]);
                       e.target.value = "";
                     }}
                   />
                 </label>
-                {showDiagnostics && (
-                  <>
-                    <label className="button secondary file-label">
-                      Загрузить эталон
-                      <input
-                        type="file"
-                        accept="application/json,.json"
-                        onChange={(e) => {
-                          void importJSON(e.target.files?.[0], true);
-                          e.target.value = "";
-                        }}
-                      />
-                    </label>
-                    <button
-                      className="button subtle"
-                      onClick={() => {
-                        setTruth(clone(grid));
-                      }}
-                    >
-                      Текущая таблица — эталон
-                    </button>
-                  </>
-                )}
               </div>
-              {showDiagnostics && truth && (
-                <p className="muted">
-                  Эталон загружен для {monthLabel(month)}.
-                </p>
-              )}
-              {showDiagnostics && accuracy !== null && confusion && (
-                <div className="metrics">
-                  <h3>Точность по клеткам: {(accuracy * 100).toFixed(1)}%</h3>
-                  <p>
-                    Строки — эталон, столбцы — предсказание. Сравнивается
-                    результат до ручных исправлений.
-                  </p>
-                  <div className="grid-scroll">
-                    <table className="metrics-table">
-                      <thead>
-                        <tr>
-                          <th>Эталон / прогноз</th>
-                          {STATUSES.map((s) => (
-                            <th key={s}>{STATUS_LABELS[s]}</th>
-                          ))}
-                          <th>Recall</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {confusion.map((row, i) => (
-                          <tr key={i}>
-                            <th>{STATUS_LABELS[STATUSES[i]]}</th>
-                            {row.map((n, j) => (
-                              <td key={j}>{n}</td>
-                            ))}
-                            <td>
-                              {row.reduce((a, b) => a + b, 0)
-                                ? `${((row[i] / row.reduce((a, b) => a + b, 0)) * 100).toFixed(1)}%`
-                                : "—"}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <button
-                    className="text-button"
-                    onClick={() =>
-                      download(
-                        new Blob(
-                          [
-                            JSON.stringify(
-                              {
-                                month,
-                                accuracy,
-                                labels: STATUSES,
-                                confusion,
-                                manualAlignment: result?.manual,
-                                cells: result?.cells,
-                              },
-                              null,
-                              2,
-                            ),
-                          ],
-                          { type: "application/json" },
-                        ),
-                        `recognition-report-${month}.json`,
-                      )
-                    }
-                  >
-                    Скачать отчёт <ArrowDownToLine size={14} />
-                  </button>
-                </div>
-              )}
             </div>
           </section>
         </main>
