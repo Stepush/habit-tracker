@@ -12,7 +12,7 @@ const openSans = localFont({
 export const metadata: Metadata = {
   title: "Ритм — трекер привычек",
   description:
-    "Печатные трекеры привычек, распознавание отметок и история выполнения.",
+    "Печатные трекеры привычек, ручное заполнение и история выполнения.",
 };
 export default function RootLayout({
   children,

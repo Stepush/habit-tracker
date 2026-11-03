@@ -13,13 +13,7 @@ async function readResponse(response: Response) {
     throw new Error(data.error ?? "Google Sheets временно недоступен.");
   return data;
 }
-export default function CloudTracker({
-  user,
-  showDiagnostics,
-}: {
-  user: User;
-  showDiagnostics: boolean;
-}) {
+export default function CloudTracker({ user }: { user: User }) {
   const [storage, setStorage] = useState<MonthStorage | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -94,12 +88,5 @@ export default function CloudTracker({
         </div>
       </main>
     );
-  return (
-    <Tracker
-      storage={storage}
-      persist={persist}
-      user={user}
-      showDiagnostics={showDiagnostics}
-    />
-  );
+  return <Tracker storage={storage} persist={persist} user={user} />;
 }

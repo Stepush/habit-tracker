@@ -8,5 +8,4 @@ node_modules/
 .DS_Store
 tmp/
 output/
-public/vendor/opencv.js
-public/scanner.worker.js
+.vercel

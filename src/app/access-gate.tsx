@@ -5,15 +5,13 @@ import { session } from "@/lib/google-auth";
 import { connection } from "next/server";
 
 export default async function AccessGate({
-  showDiagnostics = false,
   loginFailed = false,
 }: {
-  showDiagnostics?: boolean;
   loginFailed?: boolean;
 }) {
   await connection();
   const status = configuration();
-  if (status.local) return <Tracker showDiagnostics={showDiagnostics} />;
+  if (status.local) return <Tracker />;
   if (!status.ready)
     return (
       <main className="access-screen">
@@ -52,7 +50,6 @@ export default async function AccessGate({
   return (
     <CloudTracker
       user={{ name: user.name, email: user.email, sub: user.sub }}
-      showDiagnostics={showDiagnostics}
     />
   );
 }

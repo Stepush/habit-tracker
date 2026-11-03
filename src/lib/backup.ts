@@ -2,6 +2,7 @@ import {
   HABITS,
   daysInMonth,
   migrateLegacyGrid,
+  normalizeHabits,
   storageKey,
   validGrid,
   validHabits,
@@ -38,11 +39,13 @@ export function parseMonth(value: unknown): BackupMonth {
   ) {
     throw new Error("Некорректные привычки или отметки в файле.");
   }
+  const normalized = normalizeHabits(habits);
+  if (!validHabits(normalized)) throw new Error("Повторяются ID привычек.");
   return {
     version: 1,
     month: data.month,
-    habits,
-    habitIds: habits.map((h) => h.id),
+    habits: normalized,
+    habitIds: normalized.map((h) => h.id),
     grid,
   };
 }
